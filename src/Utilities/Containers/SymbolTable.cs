@@ -1,7 +1,28 @@
+/**
+ * This file contains the implementation of a generic <see cref="SymbolTable{TKey, TValue}"/>
+ * that models a dictionary using two parallel doubly linked lists (DLLs) for keys and values.
+ *
+ * The SymbolTable supports scope-based behavior commonly found in programming languages,
+ * including optional parent scopes used to represent nested environments. Each symbol table
+ * instance mainFtains its own local bindings while allowing parent relationships to enable
+ * variable shadowing and scope isolation.
+ *
+ * Key features of this implementation include:
+ * - Prevention of duplicate keys within the same local scope
+ * - Parallel storage of keys and values using doubly linked lists
+ * - Local-scope lookup methods that do not search parent scopes
+ * - Support for basic dictionary operations such as Add, Remove, Clear, Contains, and CopyTo
+ * - Enumeration over key-value pairs
+ *
+ * @authors Willow Bermudez, Locke Dimmock
+ * @date Feb 6, 2026
+ */ 
+
 using System;
 using System.Collections;
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
+using System.Linq.Expressions;
 using System.Net.Http.Headers;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
@@ -24,11 +45,7 @@ public class SymbolTable<TKey, TValue> : IDictionary<TKey, TValue>
     /// Initializes a symbol table without a 
     /// specified parent scope
     /// </summary>
-    public SymbolTable()
-    {
-        keys = new DLL<TKey>();
-        values = new DLL<TValue>();
-    }
+    public SymbolTable() : this(null) { }
 
     /// <summary>
     /// initializes symbol table when a parent is given
@@ -44,9 +61,9 @@ public class SymbolTable<TKey, TValue> : IDictionary<TKey, TValue>
     /// <summary>
     /// non implemented requirements for the IDictionary interface
     /// </summary>
-    public int Count => throw new NotImplementedException();
+    public int Count => keys.size;
 
-    public bool IsReadOnly => throw new NotImplementedException();
+    public bool IsReadOnly => false;
 
     /// <summary>
     /// Adds a key and value pair to respective 
@@ -59,6 +76,7 @@ public class SymbolTable<TKey, TValue> : IDictionary<TKey, TValue>
         // throws an exception if the key already 
         // exists - no duplicates
         if (keys.Contains(item.Key))
+        // change to ContainsKeyLocal + tests
         {
             throw new ArgumentException();
         }
@@ -75,40 +93,6 @@ public class SymbolTable<TKey, TValue> : IDictionary<TKey, TValue>
     {
         keys.Clear();
         values.Clear();
-    }
-
-    /// <summary>
-    /// Checks that the dictionary contains both the key
-    /// and the value and that they match up to each other.
-    /// </summary>
-    /// <param name="item"></param>
-    /// <returns></returns>
-    public bool Contains(KeyValuePair<TKey, TValue> item)
-    {
-        // first verifies if key is in the keys DLL
-        if (keys.Contains(item.Key) is false)
-        {
-            // returns false if it is not found
-            return false;
-        }
-        // saves the index where the matching key can be found
-        int key_idx = keys.IndexOf(item.Key);
-
-        // walks through the values DLL
-        int val_idx = 0;
-        foreach (TValue val in values)
-        {
-            // once it gets to the value at the matching index for its 
-            // mapped key it return if the value matches the imput value
-            if (val_idx == key_idx)
-            {
-                return EqualityComparer<TValue>.Default.Equals(val, item.Value);
-            }
-            // increases index until it matches found index
-            val_idx++;
-        }
-        // return false automaticaly if unable to execute
-        return false;
     }
 
     /// <summary>
@@ -145,6 +129,7 @@ public class SymbolTable<TKey, TValue> : IDictionary<TKey, TValue>
         while (idx <= keys.size)
         {
             yield return new KeyValuePair<TKey, TValue>(keys[idx], values[idx]);
+            idx--;
         }
     }
 
@@ -156,16 +141,33 @@ public class SymbolTable<TKey, TValue> : IDictionary<TKey, TValue>
     /// <returns></returns>
     public bool Remove(KeyValuePair<TKey, TValue> item)
     {
+        // make if statement for potentail of duplicate keys, remove both
         // saves if the key was removed
+        int idx = keys.IndexOf(item.Key);
         bool rem_key = keys.Remove(item.Key);
         // saves if value was removed
-        bool rem_val = values.Remove(item.Value);
+        values.RemoveAt(idx);
+        bool rem_val = values.Contains(item.Value);
         // returns true if both removals were successfull
-        if (rem_key is true && rem_val is true) return true;
+        if (rem_key is true && rem_val is false) return true;
         // else returns false
         return false;
     }
 
+    /// <summary>
+    /// Checks that the dictionary contains both the key
+    /// and the value and that they match up to each other.
+    /// </summary>
+    /// <param name="item"></param>
+    /// <returns></returns>
+    public bool ContainsKey(TKey key)
+    {
+        if (key == null) throw new ArgumentException();
+        if (ContainsKeyLocal(key)) return true;
+        if (_parent != null) return _parent.ContainsKey(key);
+
+        return false;
+    }
     /// <summary>
     /// Checks if the local scope contains the key
     /// </summary>
@@ -174,15 +176,48 @@ public class SymbolTable<TKey, TValue> : IDictionary<TKey, TValue>
     /// <exception cref="ArgumentNullException"></exception>
     public bool ContainsKeyLocal(TKey key)
     {
-        // throws and exception if the input key is null
-        if (key == null)
+        foreach (TKey item in keys)
         {
-            throw new ArgumentNullException();
+            if (EqualityComparer<TKey>.Default.Equals(item, key)) return true;
         }
-        // retuns if the key can be found in DLL or not
-        return (keys.Contains(key));
+        return false;
+        // if (keys.(item.Key) is false)
+        // {
+        //     // returns false if it is not found
+        //     return false;
+        // }
+        // // saves the index where the matching key can be found
+        // int key_idx = keys.IndexOf(item.Key);
+
+        // // walks through the values DLL
+        // int val_idx = 0;
+        // foreach (TValue val in values)
+        // {
+        //     // once it gets to the value at the matching index for its 
+        //     // mapped key it return if the value matches the imput value
+        //     if (val_idx == key_idx)
+        //     {
+        //         return EqualityComparer<TValue>.Default.Equals(val, item.Value);
+        //     }
+        //     // increases index until it matches found index
+        //     val_idx++;
+        // }
+        // // return false automaticaly if unable to execute
+        // return false;
     }
 
+    public bool TryGetValue(TKey key, out TValue value)
+    {
+        if (TryGetValueLocal(key, out TValue localval))
+        {
+            value = localval;
+            return true;
+        }
+        if (_parent != null) return _parent.TryGetValue(key, out value);
+        value = default;
+        return false;
+
+    }
     /// <summary>
     /// Finds the value that mateches up to a specified 
     /// key in the dictionary.
@@ -218,7 +253,16 @@ public class SymbolTable<TKey, TValue> : IDictionary<TKey, TValue>
         // save some default value and return false
         value = default;
         return false;
-    } 
-    
+    }
 
+    public bool Contains(KeyValuePair<TKey, TValue> item)
+    {
+        if (item.Key == null) throw new ArgumentNullException(nameof(item.Key));
+
+        int idx = keys.IndexOf(item.Key);
+        if (idx < 0) return false;
+
+        return EqualityComparer<TValue>.Default.Equals(values[idx], item.Value);
+
+    }
 }
