@@ -1,275 +1,238 @@
 
-// TokenizerImpl.cs
-// ===========================================================================
-// This file contains the main tokenizer implementation that converts source
-// code strings into sequences of tokens. The tokenizer performs lexical
-// analysis, recognizing variables, numbers, operators, and delimiters.
-// ===========================================================================
-
 using System;
 using System.Collections.Generic;
+using System.Reflection.PortableExecutable;
 
 namespace Tokenizer
 {
-    /// <summary>
-    /// Implements a lexical analyzer (tokenizer) that converts source code
-    /// into a sequence of tokens. The tokenizer recognizes variables, keywords,
-    /// numbers (integers and floats), operators, and delimiters.
-    /// </summary>
     public class TokenizerImpl
     {
-        /// <summary>
-        /// Tokenizes the given source code string into a list of tokens.
-        /// The method iterates through each character, identifying token boundaries
-        /// and classifying each token appropriately.
-        /// </summary>
-        /// <param name="sourcecode">The source code string to tokenize</param>
-        /// <returns>A list of Token objects representing the lexical units</returns>
-        /// <exception cref="ArgumentException">Thrown when an unexpected character is encountered</exception>
-        public List<Token> Tokenize(string sourcecode)
+        public List<Token> Tokenize(string source)
         {
 
-            List<Token> tokens = new List<Token>();
-            int i = 0;
+            List<Token> tokenList = new List<Token>();
 
-            // Main tokenization loop - process each character
-            while (i < sourcecode.Length)
+            // scan character by character, uses an indexing loop
+            int idx = 0;
+            while (idx < source.Length)
             {
+                // sets checked character
+                char character = source[idx];
 
-                char c = sourcecode[i];
-
-                // Check for variable names or keywords (start with letter or underscore)
-                if (char.IsLetter(c) || c == '_')
+                // ignore whitespace, skips past it as a character
+                if (char.IsWhiteSpace(character))
                 {
-                    //Variable or keyword
-                    Token t = HandleVariable(sourcecode, ref i);
-                    tokens.Add(t);
+                    idx++;
                 }
 
-                // Check for numeric literals (integers or floats)
-                else if (char.IsDigit(c))
+                // instance if the character indicates a keyword/variable
+                else if (char.IsLetter(character))
                 {
-                    //Integer or float
-                    Token t = HandleNumber(sourcecode, ref i);
-                    tokens.Add(t);
+                    // sets next index and token to add to the list
+                    var (currToken, nextIdx) = HandleKeyword(idx, source);
+                    // adds the token to list and goes to next index
+                    tokenList.Add(currToken);
+                    idx = nextIdx;
                 }
 
-                // Check for assignment operator (:=)
-                else if (c == ':')
+                // checks if the next character is a number (int/float)
+                else if (char.IsDigit(character))
                 {
-                    //Assignment
-                    Token t = HandleAssignment(sourcecode, ref i);
-                    tokens.Add(t);
+                    // creates token and gets next valid index
+                    var (currToken, nextIdx) = HandleNumber(idx, source);
+                    // adds to the list and updates index
+                    tokenList.Add(currToken);
+                    idx = nextIdx;
                 }
 
-                // Check for multiplication (*) or exponentiation (**)
-                else if (c == '*')
+                // checks for indication of an assignment character
+                else if (character == ':')
                 {
-                    //Multiplication or exponentiation
-                    Token t = HandleMultiplication(sourcecode, ref i);
-                    tokens.Add(t);
+                    // creates the token and adds it to the list
+                    Token currToken = HandleAssignment(idx, source);
+                    tokenList.Add(currToken);
+                    // updates the index by 2 (unique to assignment character)
+                    idx += 2;
                 }
 
-                // Check for float division (/) or integer division (//)
-                else if (c == '/')
+                // checks if indication of integer or float division
+                else if (character == '/')
                 {
-                    //Float/integer division
-                    Token t = HandleDivision(sourcecode, ref i);
-                    tokens.Add(t);
+                    // creates the token and sets the next index
+                    var (currToken, nextIdx) = HandleDivision(idx, source);
+                    // adds it to the list and updates index
+                    tokenList.Add(currToken);
+                    idx = nextIdx;
                 }
 
-                // Single-character addition operator
-                else if (c == '+')
+                // checks for any single character operators
+                else if (character == '+' || character == '-' || character == '%' || character == '^')
                 {
-                    //Addition
-                    tokens.Add(new Token(TokenConstants.PLUS, TokenType.OPERATOR));
-                    i++;
+                    // adds the token with single character and opertor type to the list
+                    tokenList.Add(new Token(character.ToString(), TokenType.OPERATOR));
+                    // updates the inddex by 1
+                    idx++;
+
                 }
 
-                // Single-character subtraction operator
-                else if (c == '-')
+                else if (character == '*')
                 {
-                    //Subtraction
-                    tokens.Add(new Token(TokenConstants.MINUS, TokenType.OPERATOR));
-                    i++;
+                    if (idx + 1 < source.Length && source[idx + 1] == '*')
+                    {
+                        tokenList.Add(new Token("**", TokenType.OPERATOR));
+                        idx += 2;
+                    }
+                    else
+                    {
+                        tokenList.Add(new Token("*", TokenType.OPERATOR));
+                        idx++;
+                    }
                 }
 
-                // Single-character modulus operator
-                else if (c == '%')
+                // checks for unique characters 
+                else if (character == '(')
                 {
-                    //Modulus
-                    tokens.Add(new Token(TokenConstants.MODULUS, TokenType.OPERATOR));
-                    i++;
+                    // adds the token to list with corresponding type
+                    tokenList.Add(new Token(character.ToString(), TokenType.LEFT_PAREN));
+                    // updates index by 1
+                    idx++;
                 }
 
-                // Left parenthesis delimiter
-                else if (c == '(')
+                else if (character == ')')
                 {
-                    //Left parenthesis
-                    tokens.Add(new Token(TokenConstants.LEFT_PAREN, TokenType.LEFT_PAREN));
-                    i++;
+                    // creates and adds token to the list
+                    tokenList.Add(new Token(character.ToString(), TokenType.RIGHT_PAREN));
+                    // updates index by 1
+                    idx++;
                 }
 
-                // Right parenthesis delimiter
-                else if (c == ')')
+                else if (character == '{')
                 {
-                    //Right parenthesis
-                    tokens.Add(new Token(TokenConstants.RIGHT_PAREN, TokenType.RIGHT_PAREN));
-                    i++;
+                    // creates and adds token to the list
+                    tokenList.Add(new Token(character.ToString(), TokenType.LEFT_CURLY));
+                    // updates index by 1
+                    idx++;
                 }
 
-                // Left curly brace delimiter
-                else if (c == '{')
+                else if (character == '}')
                 {
-                    //Left curly brace
-                    tokens.Add(new Token(TokenConstants.LEFT_CURLY, TokenType.LEFT_CURLY));
-                    i++;
+                    // creates and adds token to the list
+                    tokenList.Add(new Token(character.ToString(), TokenType.RIGHT_CURLY));
+                    // updates index by 1
+                    idx++;
                 }
 
-                // Right curly brace delimiter
-                else if (c == '}')
-                {
-                    //Right curly brace
-                    tokens.Add(new Token(TokenConstants.RIGHT_CURLY, TokenType.RIGHT_CURLY));
-                    i++;
-                }
-
-                // Skip whitespace characters (spaces, tabs, newlines)
-                else if (char.IsWhiteSpace(c))
-                {
-                    i++;
-                }
-
-                // Unrecognized character - throw an error
                 else
                 {
-                    //If all else fails, throw error
-                    throw new ArgumentException("Unexpected character!");
+                    //tokenList.Add(new Token(character.ToString(), TokenType.UNKNOWN));
+                    throw new ArgumentException("Invalid character.");
                 }
+
+                // anything else is seen as an invalid character and throws an exception
+                // throw new ArgumentException($"Unexpected character {character} at {idx}.");
             }
 
-            return tokens;
+            // returns compiled token list
+            return tokenList;
         }
 
-        /// <summary>
-        /// Processes a variable name or keyword starting at the current position.
-        /// Variables can contain letters, digits, and underscores but must start
-        /// with a letter or underscore. Recognizes "return" as a keyword.
-        /// </summary>
-        /// <param name="source">The source code string</param>
-        /// <param name="i">Reference to current position index (will be updated)</param>
-        /// <returns>A Token representing the variable or keyword</returns>
-        private Token HandleVariable(string source, ref int i)
+        // handles "return" keyword or a variable 
+        private (Token, int) HandleKeyword(int idx, string source)
         {
-            int start = i;
-            // Consume all letters, digits, and underscores
-            while (i < source.Length && (char.IsLetterOrDigit(source[i]) || source[i] == '_'))
-                i++;
-
-            string word = source.Substring(start, i - start);
-
-            // Check if this is the "return" keyword
-            if (word == "return")
-                return new Token(word, TokenType.RETURN);
-
-            // Otherwise, it's a variable name
-            return new Token(word, TokenType.VARIABLE);
-        }
-
-        /// <summary>
-        /// Processes a numeric literal (integer or float) starting at the current position.
-        /// Handles decimal points to distinguish between integers and floats.
-        /// </summary>
-        /// <param name="source">The source code string</param>
-        /// <param name="i">Reference to current position index (will be updated)</param>
-        /// <returns>A Token representing the number (INTEGER or FLOAT type)</returns>
-        /// <exception cref="ArgumentException">Thrown if multiple decimal points are found</exception>
-        private Token HandleNumber(string source, ref int i)
-        {
-            int start = i;
-            bool isFloat = false;
-
-            // Consume all digits and decimal points
-            while (i < source.Length && (char.IsDigit(source[i]) || source[i] == '.'))
+            // creates variable of compiled keyword
+            string check = "";
+            // loops through the characters until end or keyword or vairable is indicated
+            while (idx < source.Length && char.IsLetter(source[idx]))
             {
-                
-                if (source[i] == '.')
+                // adds the characters to variable, updates index by 1
+                check += source[idx];
+                idx++;
+            }
+
+            // if it is the "return" keyword, return that as the created token, along with updated index
+            if (check == "return") return (new Token(check, TokenType.RETURN), idx);
+
+            // variable must be lowercase alphabetic
+            foreach (char character in check)
+            {
+                // throws exception if doesn't meet the requirements
+                if (!char.IsLetter(character) || !char.IsLower(character)) throw new ArgumentException("Invalid variable");
+            }
+            // returns the valid variable as a created token
+            return (new Token(check, TokenType.VARIABLE), idx);
+        }
+
+        // handles numbers that are either integers or floast
+        private (Token, int) HandleNumber(int idx, string source)
+        {
+            // compiles a string of the numbers in sequence 
+            string num = "";
+
+            // loops through the digits
+            while (idx < source.Length && char.IsDigit(source[idx]))
+            {
+                // adds them to the varible and updates index
+                num += source[idx];
+                idx++;
+            }
+
+            // checks of there is a decimal point indicating a float
+            if (idx < source.Length && source[idx] == '.')
+            {
+                // adds the decimal into the number and updates index
+                num += '.';
+                idx++;
+
+                // checks that integer has at least one digit after decimal
+                // throws and exception if its invalid
+                if (idx >= source.Length || !char.IsDigit(source[idx])) throw new ArgumentException("Invalid float");
+
+                // loops through what is after the decimal 
+                while (idx < source.Length && char.IsDigit(source[idx]))
                 {
-                    // Error if we encounter a second decimal point
-                    if (isFloat)
-                        throw new ArgumentException("Unexpected second decimal point found in umber!");
-                    isFloat = true;
+                    // adds to the string and updates the index
+                    num += source[idx];
+                    idx++;
                 }
-                i++;
+
+                // returns finalized created floast token and updated index
+                return (new Token(num, TokenType.FLOAT), idx);
             }
-
-            string numberToReturn = source.Substring(start, i - start);
-
-            // Determine token type based on presence of decimal point
-            //If/else syntax (If isFloat then TokenType.FLOAT else TokenType.INTEGER)
-            TokenType type = isFloat ? TokenType.FLOAT : TokenType.INTEGER;
-
-            return new Token(numberToReturn, type);
+            // returns integer token and index
+            return (new Token(num, TokenType.INTEGER), idx);
         }
 
-        /// <summary>
-        /// Processes an assignment operator (:=) starting at the current position.
-        /// The assignment operator must be exactly ":=" - a lone colon is invalid.
-        /// </summary>
-        /// <param name="source">The source code string</param>
-        /// <param name="i">Reference to current position index (will be updated)</param>
-        /// <returns>A Token representing the assignment operator</returns>
-        /// <exception cref="ArgumentException">Thrown if ':' is not followed by '='</exception>
-        private Token HandleAssignment(string source, ref int i)
+        // handles assignment variable only
+        private Token HandleAssignment(int idx, string source)
         {
-            // Verify that ':' is followed by '=' to form ':='
-            if (i + 1 >= source.Length || source[i + 1] != '=')
-                throw new ArgumentException("Not an assignment operator (Expected := but got :");
-
-            i += 2; //Takes ":="
-            return new Token(TokenConstants.ASSIGNMENT, TokenType.ASSIGNMENT);
-        }
-
-        /// <summary>
-        /// Processes multiplication (*) or exponentiation (**) operator.
-        /// Checks if a single asterisk is followed by another to form exponentiation.
-        /// </summary>
-        /// <param name="source">The source code string</param>
-        /// <param name="i">Reference to current position index (will be updated)</param>
-        /// <returns>A Token representing multiplication or exponentiation</returns>
-        private Token HandleMultiplication(string source, ref int i)
-        {
-            // Check for exponentiation operator (**)
-            if (i + 1 < source.Length && source[i + 1] == '*')
+            // checks if colon is at the end of the string already
+            if (idx + 1 >= source.Length) throw new ArgumentException("not an assignment operator");
+            // checks that after the colon is "="
+            if (source[idx + 1] == '=')
             {
-                i += 2; //Takes "**"
-                return new Token(TokenConstants.EXPONENTIATION, TokenType.OPERATOR);
+                // updates index to go past the full assignment strings
+                idx++;
+                // returns the found assignment token
+                return new Token(":=", TokenType.ASSIGNMENT);
             }
-
-            // Single asterisk is multiplication
-            i++; //Takes "*"
-            return new Token(TokenConstants.TIMES, TokenType.OPERATOR);
+            // if there is no "=" after the colon, throws and exception
+            throw new ArgumentException("Invalid assignment operator");
         }
 
-        /// <summary>
-        /// Processes float division (/) or integer division (//) operator.
-        /// Checks if a single slash is followed by another to form integer division.
-        /// </summary>
-        /// <param name="source">The source code string</param>
-        /// <param name="i">Reference to current position index (will be updated)</param>
-        /// <returns>A Token representing float or integer division</returns>
-        private Token HandleDivision(string source, ref int i)
+        // handles integer and float division
+        private (Token, int) HandleDivision(int idx, string source)
         {
-            // Check for integer division operator (//)
-            if (i + 1 < source.Length && source[i + 1] == '/')
+            // checks if indicates integer division
+            if (idx + 1 < source.Length && source[idx + 1] == '/')
             {
-                i += 2; //Takes "//"
-                return new Token(TokenConstants.INTEGER_DIVISION, TokenType.OPERATOR);
+                // update track index to include second backslash
+                // returns created token and updated index
+                return (new Token("//", TokenType.OPERATOR), idx + 2);
             }
 
-            // Single slash is float division
-            i++; //Takes "/"
-            return new Token(TokenConstants.FLOAT_DIVISION, TokenType.OPERATOR);
+            // returns token of integer division
+            return (new Token("/", TokenType.OPERATOR), idx + 1);
         }
     }
+    
 }
